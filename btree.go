@@ -56,6 +56,10 @@ import (
 	"sync"
 )
 
+const Degree = 32
+const MaxItems = Degree*2 - 1
+const MinItems = Degree - 1
+
 // ItemOld represents a single object in the tree.
 type ItemOld interface {
 	// Less tests whether the current item is less than the given argument.
@@ -128,18 +132,14 @@ type ItemIterator func(k, v []byte) bool
 //
 // New(2), for example, will create a 2-3-4 tree (each node contains 1-3 items
 // and 2-4 children).
-func New(degree int) *BTree {
-	return NewWithFreeList(degree, NewFreeList(DefaultFreeListSize))
+func New() *BTree {
+	return NewWithFreeList(NewFreeList(DefaultFreeListSize))
 }
 
 // NewWithFreeList creates a new B-Tree that uses the given node free list.
-func NewWithFreeList(degree int, f *FreeList) *BTree {
-	if degree <= 1 {
-		panic("bad degree")
-	}
+func NewWithFreeList(f *FreeList) *BTree {
 	return &BTree{
-		degree: degree,
-		cow:    &copyOnWriteContext{freelist: f},
+		cow: &copyOnWriteContext{freelist: f},
 	}
 }
 
@@ -295,12 +295,12 @@ func (n *node) split(i int) (*Item, *node) {
 
 // maybeSplitChild checks if a child should be split, and if so splits it.
 // Returns whether or not a split occurred.
-func (n *node) maybeSplitChild(i, maxItems int) bool {
-	if len(n.children[i].items) < maxItems {
+func (n *node) maybeSplitChild(i int) bool {
+	if len(n.children[i].items) < MaxItems {
 		return false
 	}
 	first := n.mutableChild(i)
-	item, second := first.split(maxItems / 2)
+	item, second := first.split(MaxItems / 2)
 	n.items.insertAt(i, item)
 	n.children.insertAt(i+1, second)
 	return true
@@ -309,7 +309,7 @@ func (n *node) maybeSplitChild(i, maxItems int) bool {
 // insert inserts an item into the subtree rooted at this node, making sure
 // no nodes in the subtree exceed maxItems items.  Should an equivalent item be
 // be found/replaced by insert, it will be returned.
-func (n *node) insert(item *Item, maxItems int) *Item {
+func (n *node) insert(item *Item) *Item {
 	i, found := n.items.find(item)
 	if found {
 		out := n.items[i]
@@ -320,7 +320,7 @@ func (n *node) insert(item *Item, maxItems int) *Item {
 		n.items.insertAt(i, item)
 		return nil
 	}
-	if n.maybeSplitChild(i, maxItems) {
+	if n.maybeSplitChild(i) {
 		inTree := n.items[i]
 		switch {
 		case item.Less(inTree):
@@ -333,7 +333,7 @@ func (n *node) insert(item *Item, maxItems int) *Item {
 			return out
 		}
 	}
-	return n.mutableChild(i).insert(item, maxItems)
+	return n.mutableChild(i).insert(item)
 }
 
 // get finds the given key in the subtree and returns it.
@@ -385,7 +385,7 @@ const (
 )
 
 // remove removes an item from the subtree rooted at this node.
-func (n *node) remove(item *Item, minItems int, typ toRemove) *Item {
+func (n *node) remove(item *Item, typ toRemove) *Item {
 	var i int
 	var found bool
 	switch typ {
@@ -411,8 +411,8 @@ func (n *node) remove(item *Item, minItems int, typ toRemove) *Item {
 		panic("invalid type")
 	}
 	// If we get to here, we have children.
-	if len(n.children[i].items) <= minItems {
-		return n.growChildAndRemove(i, item, minItems, typ)
+	if len(n.children[i].items) <= MinItems {
+		return n.growChildAndRemove(i, item, typ)
 	}
 	child := n.mutableChild(i)
 	// Either we had enough items to begin with, or we've done some
@@ -425,12 +425,12 @@ func (n *node) remove(item *Item, minItems int, typ toRemove) *Item {
 		// We use our special-case 'remove' call with typ=maxItem to pull the
 		// predecessor of item i (the rightmost leaf of our immediate left child)
 		// and set it into where we pulled the item from.
-		n.items[i] = child.remove(nil, minItems, removeMax)
+		n.items[i] = child.remove(nil, removeMax)
 		return out
 	}
 	// Final recursive call.  Once we're here, we know that the item isn't in this
 	// node and that the child is big enough to remove from.
-	return child.remove(item, minItems, typ)
+	return child.remove(item, typ)
 }
 
 // growChildAndRemove grows child 'i' to make sure it's possible to remove an
@@ -452,8 +452,8 @@ func (n *node) remove(item *Item, minItems int, typ toRemove) *Item {
 // We then simply redo our remove call, and the second time (regardless of
 // whether we're in case 1 or 2), we'll have enough items and can guarantee
 // that we hit case A.
-func (n *node) growChildAndRemove(i int, item *Item, minItems int, typ toRemove) *Item {
-	if i > 0 && len(n.children[i-1].items) > minItems {
+func (n *node) growChildAndRemove(i int, item *Item, typ toRemove) *Item {
+	if i > 0 && len(n.children[i-1].items) > MinItems {
 		// Steal from left child
 		child := n.mutableChild(i)
 		stealFrom := n.mutableChild(i - 1)
@@ -463,7 +463,7 @@ func (n *node) growChildAndRemove(i int, item *Item, minItems int, typ toRemove)
 		if len(stealFrom.children) > 0 {
 			child.children.insertAt(0, stealFrom.children.pop())
 		}
-	} else if i < len(n.items) && len(n.children[i+1].items) > minItems {
+	} else if i < len(n.items) && len(n.children[i+1].items) > MinItems {
 		// steal from right child
 		child := n.mutableChild(i)
 		stealFrom := n.mutableChild(i + 1)
@@ -486,7 +486,7 @@ func (n *node) growChildAndRemove(i int, item *Item, minItems int, typ toRemove)
 		child.children = append(child.children, mergeChild.children...)
 		n.cow.freeNode(mergeChild)
 	}
-	return n.remove(item, minItems, typ)
+	return n.remove(item, typ)
 }
 
 type direction int
@@ -587,7 +587,6 @@ func (n *node) print(w io.Writer, level int) {
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
 type BTree struct {
-	degree int
 	length int
 	root   *node
 	cow    *copyOnWriteContext
@@ -633,17 +632,6 @@ func (t *BTree) Clone() (t2 *BTree) {
 	t.cow = &cow1
 	out.cow = &cow2
 	return &out
-}
-
-// maxItems returns the max number of items to allow per node.
-func (t *BTree) maxItems() int {
-	return t.degree*2 - 1
-}
-
-// minItems returns the min number of items to allow per node (ignored for the
-// root node).
-func (t *BTree) minItems() int {
-	return t.degree - 1
 }
 
 func (c *copyOnWriteContext) newNode() (n *node) {
@@ -696,15 +684,15 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 		return nil, nil
 	} else {
 		t.root = t.root.mutableFor(t.cow)
-		if len(t.root.items) >= t.maxItems() {
-			item2, second := t.root.split(t.maxItems() / 2)
+		if len(t.root.items) >= MaxItems {
+			item2, second := t.root.split(MaxItems / 2)
 			oldroot := t.root
 			t.root = t.cow.newNode()
 			t.root.items = append(t.root.items, item2)
 			t.root.children = append(t.root.children, oldroot, second)
 		}
 	}
-	out := t.root.insert(&Item{k, v}, t.maxItems())
+	out := t.root.insert(&Item{k, v})
 	if out == nil {
 		t.length++
 		return nil, nil
@@ -747,7 +735,7 @@ func (t *BTree) deleteItem(item *Item, typ toRemove) *Item {
 		return nil
 	}
 	t.root = t.root.mutableFor(t.cow)
-	out := t.root.remove(item, t.minItems(), typ)
+	out := t.root.remove(item, typ)
 	if len(t.root.items) == 0 && len(t.root.children) > 0 {
 		oldroot := t.root
 		t.root = t.root.children[0]

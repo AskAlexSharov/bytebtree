@@ -16,7 +16,6 @@ package bytebtree
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -104,10 +103,8 @@ func revorder(keys, values [][]byte) ([][]byte, [][]byte) {
 	return l.keys, l.values
 }
 
-var btreeDegree = flag.Int("degree", 32, "B-Tree degree")
-
 func TestBTree(t *testing.T) {
-	tr := New(*btreeDegree)
+	tr := New()
 	const treeSize = 10_000
 	for i := 0; i < 10; i++ {
 		if min, _ := tr.Min(); min != nil {
@@ -200,7 +197,7 @@ func ExampleBTree() {
 */
 
 func TestDeleteMin(t *testing.T) {
-	tr := New(3)
+	tr := New()
 	keys, values := perm(100)
 	for i := range keys {
 		tr.ReplaceOrInsert(keys[i], values[i])
