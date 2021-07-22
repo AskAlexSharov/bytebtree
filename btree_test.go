@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package btree
+package bytebtree
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -31,43 +32,63 @@ func init() {
 	rand.Seed(seed)
 }
 
-// perm returns a random permutation of n Int items in the range [0, n).
-func perm(n int) (out []Item) {
-	for _, v := range rand.Perm(n) {
-		out = append(out, Int(v))
+// perm returns a random per mutation of n Int items in the range [0, n).
+func perm(n int) (out [][]byte, values [][]byte) {
+	for i := 0; i < n; i++ {
+		key := make([]byte, 20)
+		rand.Read(key)
+		out = append(out, key)
+		value := make([]byte, 32)
+		rand.Read(value)
+		values = append(values, value)
 	}
 	return
 }
 
+type List struct {
+	keys   [][]byte
+	values [][]byte
+}
+
+func (l *List) Swap(i, j int) {
+	l.keys[i], l.keys[j] = l.keys[j], l.keys[i]
+	l.values[i], l.values[j] = l.values[j], l.values[i]
+}
+
+func (l *List) Len() int           { return len(l.keys) }
+func (l *List) Less(i, j int) bool { return bytes.Compare(l.keys[i], l.keys[j]) < 0 }
+
 // rang returns an ordered list of Int items in the range [0, n).
-func rang(n int) (out []Item) {
-	for i := 0; i < n; i++ {
-		out = append(out, Int(i))
-	}
-	return
+func rang(n int) (keys, value [][]byte) {
+	k, v := perm(n)
+	l := &List{k, v}
+	sort.Sort(l)
+	return l.keys, l.values
 }
 
 // all extracts all items from a tree in order as a slice.
-func all(t *BTree) (out []Item) {
-	t.Ascend(func(a Item) bool {
-		out = append(out, a)
+func all(t *BTree) (keys, values [][]byte) {
+	t.Ascend(func(k, v []byte) bool {
+		keys = append(keys, k)
+		values = append(values, v)
 		return true
 	})
 	return
 }
 
 // rangerev returns a reversed ordered list of Int items in the range [0, n).
-func rangrev(n int) (out []Item) {
-	for i := n - 1; i >= 0; i-- {
-		out = append(out, Int(i))
-	}
-	return
+func rangrev(n int) (keys, values [][]byte) {
+	k, v := perm(n)
+	l := &List{k, v}
+	sort.Reverse(l)
+	return l.keys, l.values
 }
 
 // allrev extracts all items from a tree in reverse order as a slice.
-func allrev(t *BTree) (out []Item) {
-	t.Descend(func(a Item) bool {
-		out = append(out, a)
+func allrev(t *BTree) (keys, values [][]byte) {
+	t.Descend(func(k, v []byte) bool {
+		keys = append(keys, k)
+		values = append(values, v)
 		return true
 	})
 	return
@@ -79,26 +100,29 @@ func TestBTree(t *testing.T) {
 	tr := New(*btreeDegree)
 	const treeSize = 10000
 	for i := 0; i < 10; i++ {
-		if min := tr.Min(); min != nil {
+		if min, _ := tr.Min(); min != nil {
 			t.Fatalf("empty min, got %+v", min)
 		}
-		if max := tr.Max(); max != nil {
+		if max, _ := tr.Max(); max != nil {
 			t.Fatalf("empty max, got %+v", max)
 		}
-		for _, item := range perm(treeSize) {
-			if x := tr.ReplaceOrInsert(item); x != nil {
-				t.Fatal("insert found item", item)
+		keys, values := perm(treeSize)
+		for i := range keys {
+			if _, x := tr.ReplaceOrInsert(keys[i], values[i]); x != nil {
+				t.Fatal("insert found item", keys[i])
 			}
 		}
-		for _, item := range perm(treeSize) {
-			if x := tr.ReplaceOrInsert(item); x == nil {
-				t.Fatal("insert didn't find item", item)
+		keys, values = perm(treeSize)
+		for i := range keys {
+			if x, _ := tr.ReplaceOrInsert(keys[i], values[i]); x == nil {
+				t.Fatal("insert didn't find item", keys[i])
 			}
 		}
-		if min, want := tr.Min(), Item(Int(0)); min != want {
+		min, _ := tr.Min()
+		if want := keys[0]; !bytes.Equal(min, want) {
 			t.Fatalf("min: want %+v, got %+v", want, min)
 		}
-		if max, want := tr.Max(), Item(Int(treeSize-1)); max != want {
+		if max, want := tr.Max(), ItemOld(Int(treeSize-1)); max != want {
 			t.Fatalf("max: want %+v, got %+v", want, max)
 		}
 		got := all(tr)
@@ -161,7 +185,7 @@ func TestDeleteMin(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
+	var got []ItemOld
 	for v := tr.DeleteMin(); v != nil; v = tr.DeleteMin() {
 		got = append(got, v)
 	}
@@ -175,7 +199,7 @@ func TestDeleteMax(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
+	var got []ItemOld
 	for v := tr.DeleteMax(); v != nil; v = tr.DeleteMax() {
 		got = append(got, v)
 	}
@@ -193,8 +217,8 @@ func TestAscendRange(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
-	tr.AscendRange(Int(40), Int(60), func(a Item) bool {
+	var got []ItemOld
+	tr.AscendRange(Int(40), Int(60), func(a ItemOld) bool {
 		got = append(got, a)
 		return true
 	})
@@ -202,7 +226,7 @@ func TestAscendRange(t *testing.T) {
 		t.Fatalf("ascendrange:\n got: %v\nwant: %v", got, want)
 	}
 	got = got[:0]
-	tr.AscendRange(Int(40), Int(60), func(a Item) bool {
+	tr.AscendRange(Int(40), Int(60), func(a ItemOld) bool {
 		if a.(Int) > 50 {
 			return false
 		}
@@ -219,8 +243,8 @@ func TestDescendRange(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
-	tr.DescendRange(Int(60), Int(40), func(a Item) bool {
+	var got []ItemOld
+	tr.DescendRange(Int(60), Int(40), func(a ItemOld) bool {
 		got = append(got, a)
 		return true
 	})
@@ -228,7 +252,7 @@ func TestDescendRange(t *testing.T) {
 		t.Fatalf("descendrange:\n got: %v\nwant: %v", got, want)
 	}
 	got = got[:0]
-	tr.DescendRange(Int(60), Int(40), func(a Item) bool {
+	tr.DescendRange(Int(60), Int(40), func(a ItemOld) bool {
 		if a.(Int) < 50 {
 			return false
 		}
@@ -244,8 +268,8 @@ func TestAscendLessThan(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
-	tr.AscendLessThan(Int(60), func(a Item) bool {
+	var got []ItemOld
+	tr.AscendLessThan(Int(60), func(a ItemOld) bool {
 		got = append(got, a)
 		return true
 	})
@@ -253,7 +277,7 @@ func TestAscendLessThan(t *testing.T) {
 		t.Fatalf("ascendrange:\n got: %v\nwant: %v", got, want)
 	}
 	got = got[:0]
-	tr.AscendLessThan(Int(60), func(a Item) bool {
+	tr.AscendLessThan(Int(60), func(a ItemOld) bool {
 		if a.(Int) > 50 {
 			return false
 		}
@@ -270,8 +294,8 @@ func TestDescendLessOrEqual(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
-	tr.DescendLessOrEqual(Int(40), func(a Item) bool {
+	var got []ItemOld
+	tr.DescendLessOrEqual(Int(40), func(a ItemOld) bool {
 		got = append(got, a)
 		return true
 	})
@@ -279,7 +303,7 @@ func TestDescendLessOrEqual(t *testing.T) {
 		t.Fatalf("descendlessorequal:\n got: %v\nwant: %v", got, want)
 	}
 	got = got[:0]
-	tr.DescendLessOrEqual(Int(60), func(a Item) bool {
+	tr.DescendLessOrEqual(Int(60), func(a ItemOld) bool {
 		if a.(Int) < 50 {
 			return false
 		}
@@ -295,8 +319,8 @@ func TestAscendGreaterOrEqual(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
-	tr.AscendGreaterOrEqual(Int(40), func(a Item) bool {
+	var got []ItemOld
+	tr.AscendGreaterOrEqual(Int(40), func(a ItemOld) bool {
 		got = append(got, a)
 		return true
 	})
@@ -304,7 +328,7 @@ func TestAscendGreaterOrEqual(t *testing.T) {
 		t.Fatalf("ascendrange:\n got: %v\nwant: %v", got, want)
 	}
 	got = got[:0]
-	tr.AscendGreaterOrEqual(Int(40), func(a Item) bool {
+	tr.AscendGreaterOrEqual(Int(40), func(a ItemOld) bool {
 		if a.(Int) > 50 {
 			return false
 		}
@@ -321,8 +345,8 @@ func TestDescendGreaterThan(t *testing.T) {
 	for _, v := range perm(100) {
 		tr.ReplaceOrInsert(v)
 	}
-	var got []Item
-	tr.DescendGreaterThan(Int(40), func(a Item) bool {
+	var got []ItemOld
+	tr.DescendGreaterThan(Int(40), func(a ItemOld) bool {
 		got = append(got, a)
 		return true
 	})
@@ -330,7 +354,7 @@ func TestDescendGreaterThan(t *testing.T) {
 		t.Fatalf("descendgreaterthan:\n got: %v\nwant: %v", got, want)
 	}
 	got = got[:0]
-	tr.DescendGreaterThan(Int(40), func(a Item) bool {
+	tr.DescendGreaterThan(Int(40), func(a ItemOld) bool {
 		if a.(Int) < 50 {
 			return false
 		}
@@ -372,7 +396,7 @@ func BenchmarkSeek(b *testing.B) {
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		tr.AscendGreaterOrEqual(Int(i%size), func(i Item) bool { return false })
+		tr.AscendGreaterOrEqual(Int(i%size), func(i ItemOld) bool { return false })
 	}
 }
 
@@ -493,7 +517,7 @@ func BenchmarkGetCloneEachTime(b *testing.B) {
 	}
 }
 
-type byInts []Item
+type byInts []ItemOld
 
 func (a byInts) Len() int {
 	return len(a)
@@ -517,7 +541,7 @@ func BenchmarkAscend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		j := 0
-		tr.Ascend(func(item Item) bool {
+		tr.Ascend(func(item ItemOld) bool {
 			if item.(Int) != arr[j].(Int) {
 				b.Fatalf("mismatch: expected: %v, got %v", arr[j].(Int), item.(Int))
 			}
@@ -537,7 +561,7 @@ func BenchmarkDescend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		j := len(arr) - 1
-		tr.Descend(func(item Item) bool {
+		tr.Descend(func(item ItemOld) bool {
 			if item.(Int) != arr[j].(Int) {
 				b.Fatalf("mismatch: expected: %v, got %v", arr[j].(Int), item.(Int))
 			}
@@ -556,7 +580,7 @@ func BenchmarkAscendRange(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		j := 100
-		tr.AscendRange(Int(100), arr[len(arr)-100], func(item Item) bool {
+		tr.AscendRange(Int(100), arr[len(arr)-100], func(item ItemOld) bool {
 			if item.(Int) != arr[j].(Int) {
 				b.Fatalf("mismatch: expected: %v, got %v", arr[j].(Int), item.(Int))
 			}
@@ -579,7 +603,7 @@ func BenchmarkDescendRange(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		j := len(arr) - 100
-		tr.DescendRange(arr[len(arr)-100], Int(100), func(item Item) bool {
+		tr.DescendRange(arr[len(arr)-100], Int(100), func(item ItemOld) bool {
 			if item.(Int) != arr[j].(Int) {
 				b.Fatalf("mismatch: expected: %v, got %v", arr[j].(Int), item.(Int))
 			}
@@ -602,7 +626,7 @@ func BenchmarkAscendGreaterOrEqual(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		j := 100
 		k := 0
-		tr.AscendGreaterOrEqual(Int(100), func(item Item) bool {
+		tr.AscendGreaterOrEqual(Int(100), func(item ItemOld) bool {
 			if item.(Int) != arr[j].(Int) {
 				b.Fatalf("mismatch: expected: %v, got %v", arr[j].(Int), item.(Int))
 			}
@@ -629,7 +653,7 @@ func BenchmarkDescendLessOrEqual(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		j := len(arr) - 100
 		k := len(arr)
-		tr.DescendLessOrEqual(arr[len(arr)-100], func(item Item) bool {
+		tr.DescendLessOrEqual(arr[len(arr)-100], func(item ItemOld) bool {
 			if item.(Int) != arr[j].(Int) {
 				b.Fatalf("mismatch: expected: %v, got %v", arr[j].(Int), item.(Int))
 			}
@@ -648,7 +672,7 @@ func BenchmarkDescendLessOrEqual(b *testing.B) {
 
 const cloneTestSize = 10000
 
-func cloneTest(t *testing.T, b *BTree, start int, p []Item, wg *sync.WaitGroup, trees *[]*BTree, lock *sync.Mutex) {
+func cloneTest(t *testing.T, b *BTree, start int, p []ItemOld, wg *sync.WaitGroup, trees *[]*BTree, lock *sync.Mutex) {
 	t.Logf("Starting new clone at %v", start)
 	lock.Lock()
 	*trees = append(*trees, b)
@@ -693,7 +717,7 @@ func TestCloneConcurrentOperations(t *testing.T) {
 	wg.Wait()
 	t.Log("Checking all values again")
 	for i, tree := range trees {
-		var wantpart []Item
+		var wantpart []ItemOld
 		if i < len(trees)/2 {
 			wantpart = want[:cloneTestSize/2]
 		} else {
@@ -717,8 +741,8 @@ func BenchmarkDeleteAndRestore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			dels := make([]Item, 0, tr.Len())
-			tr.Ascend(ItemIterator(func(b Item) bool {
+			dels := make([]ItemOld, 0, tr.Len())
+			tr.Ascend(ItemIterator(func(b ItemOld) bool {
 				dels = append(dels, b)
 				return true
 			}))
@@ -740,8 +764,8 @@ func BenchmarkDeleteAndRestore(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			dels := make([]Item, 0, tr.Len())
-			tr.Ascend(ItemIterator(func(b Item) bool {
+			dels := make([]ItemOld, 0, tr.Len())
+			tr.Ascend(ItemIterator(func(b ItemOld) bool {
 				dels = append(dels, b)
 				return true
 			}))
