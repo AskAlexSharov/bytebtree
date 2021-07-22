@@ -392,7 +392,7 @@ func TestDescendGreaterThan(t *testing.T) {
 	}
 }
 */
-const benchmarkTreeSize = 10000
+const benchmarkTreeSize = 1_000_000
 
 func BenchmarkInsert(b *testing.B) {
 	b.StopTimer()
