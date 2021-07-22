@@ -833,15 +833,15 @@ func (t *BTree) Descend(iterator ItemIterator) {
 
 // Get looks for the key item in the tree, returning it.  It returns nil if
 // unable to find that item.
-func (t *BTree) Get(key []byte) []byte {
+func (t *BTree) Get(key []byte) ([]byte, bool) {
 	if t.root == nil {
-		return nil
+		return nil, false
 	}
 	it := t.root.get(&Item{key, nil})
 	if it == nil {
-		return nil
+		return nil, false
 	}
-	return it[1]
+	return it[1], true
 }
 
 // Min returns the smallest item in the tree, or nil if the tree is empty.
@@ -864,7 +864,8 @@ func (t *BTree) Max() ([]byte, []byte) {
 
 // Has returns true if the given key is in the tree.
 func (t *BTree) Has(key []byte) bool {
-	return t.Get(key) != nil
+	_, ok := t.Get(key)
+	return ok
 }
 
 // Len returns the number of items currently in the tree.
