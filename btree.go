@@ -708,6 +708,9 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 	if out == nil {
 		t.length++
 	}
+	if out == nil {
+		return nil, nil
+	}
 	return out[0], out[1]
 }
 
@@ -715,6 +718,9 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 // it.  If no such item exists, returns nil.
 func (t *BTree) Delete(k []byte) ([]byte, []byte) {
 	out := t.deleteItem(&Item{k, nil}, removeItem)
+	if out == nil {
+		return nil, nil
+	}
 	return out[0], out[1]
 }
 
