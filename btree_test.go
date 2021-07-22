@@ -21,7 +21,6 @@ import (
 	"math/rand"
 	"reflect"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 )
@@ -94,11 +93,22 @@ func allrev(t *BTree) (keys, values [][]byte) {
 	return
 }
 
+func order(keys, values [][]byte) ([][]byte, [][]byte) {
+	l := &List{keys, values}
+	sort.Sort(l)
+	return l.keys, l.values
+}
+func revorder(keys, values [][]byte) ([][]byte, [][]byte) {
+	l := &List{keys, values}
+	sort.Reverse(l)
+	return l.keys, l.values
+}
+
 var btreeDegree = flag.Int("degree", 32, "B-Tree degree")
 
 func TestBTree(t *testing.T) {
 	tr := New(*btreeDegree)
-	const treeSize = 10000
+	const treeSize = 10_000
 	for i := 0; i < 10; i++ {
 		if min, _ := tr.Min(); min != nil {
 			t.Fatalf("empty min, got %+v", min)
@@ -108,46 +118,54 @@ func TestBTree(t *testing.T) {
 		}
 		keys, values := perm(treeSize)
 		for i := range keys {
-			if _, x := tr.ReplaceOrInsert(keys[i], values[i]); x != nil {
-				t.Fatal("insert found item", keys[i])
+			if x, _ := tr.ReplaceOrInsert(keys[i], values[i]); x != nil {
+				t.Fatalf("insert found item: %x", keys[i])
 			}
 		}
-		keys, values = perm(treeSize)
 		for i := range keys {
 			if x, _ := tr.ReplaceOrInsert(keys[i], values[i]); x == nil {
-				t.Fatal("insert didn't find item", keys[i])
+				t.Fatalf("insert didn't find item, %x", keys[i])
 			}
 		}
 		min, _ := tr.Min()
+		keys, values = order(keys, values)
 		if want := keys[0]; !bytes.Equal(min, want) {
-			t.Fatalf("min: want %+v, got %+v", want, min)
+			t.Fatalf("min: want %x, got %x", want, min)
 		}
-		if max, want := tr.Max(), ItemOld(Int(treeSize-1)); max != want {
-			t.Fatalf("max: want %+v, got %+v", want, max)
+		max, _ := tr.Max()
+		if want := keys[treeSize-1]; !bytes.Equal(max, want) {
+			t.Fatalf("max: want %x, got %x", want, max)
 		}
-		got := all(tr)
-		want := rang(treeSize)
+		got, gotValues := all(tr)
+		want, wantValues := order(keys, values)
 		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("mismatch:\n got: %v\nwant: %v", got, want)
+			t.Fatalf("mismatch:\n got: %x\nwant: %x", got, want)
+		}
+		if !reflect.DeepEqual(gotValues, wantValues) {
+			t.Fatalf("mismatch:\n got: %x\nwant: %x", gotValues, wantValues)
 		}
 
-		gotrev := allrev(tr)
-		wantrev := rangrev(treeSize)
+		gotrev, gotrevValues := all(tr)
+		wantrev, wantrevValues := revorder(keys, values)
 		if !reflect.DeepEqual(gotrev, wantrev) {
-			t.Fatalf("mismatch:\n got: %v\nwant: %v", got, want)
+			t.Fatalf("mismatch:\n got: %x\nwant: %x", got, want)
 		}
-
-		for _, item := range perm(treeSize) {
-			if x := tr.Delete(item); x == nil {
-				t.Fatalf("didn't find %v", item)
+		if !reflect.DeepEqual(gotrevValues, wantrevValues) {
+			t.Fatalf("mismatch:\n got: %x\nwant: %x", gotrevValues, wantrevValues)
+		}
+		for i := range keys {
+			if x, _ := tr.Delete(keys[i]); x == nil {
+				t.Fatalf("didn't find %v", keys[i])
 			}
 		}
-		if got = all(tr); len(got) > 0 {
+		got, _ = all(tr)
+		if len(got) > 0 {
 			t.Fatalf("some left!: %v", got)
 		}
 	}
 }
 
+/*
 func ExampleBTree() {
 	tr := New(*btreeDegree)
 	for i := Int(0); i < 10; i++ {
@@ -179,20 +197,31 @@ func ExampleBTree() {
 	// delmax:     100
 	// len:        8
 }
+*/
 
 func TestDeleteMin(t *testing.T) {
 	tr := New(3)
-	for _, v := range perm(100) {
-		tr.ReplaceOrInsert(v)
+	keys, values := perm(100)
+	for i := range keys {
+		tr.ReplaceOrInsert(keys[i], values[i])
 	}
-	var got []ItemOld
-	for v := tr.DeleteMin(); v != nil; v = tr.DeleteMin() {
-		got = append(got, v)
+	var got [][]byte
+	var gotValues [][]byte
+	for k, v := tr.DeleteMin(); k != nil; k, v = tr.DeleteMin() {
+		got = append(got, k)
+		gotValues = append(gotValues, v)
 	}
-	if want := rang(100); !reflect.DeepEqual(got, want) {
-		t.Fatalf("ascendrange:\n got: %v\nwant: %v", got, want)
+
+	want, wantValues := order(keys, values)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ascendrange:\n got: %x\nwant: %x", got, want)
+	}
+	if !reflect.DeepEqual(gotValues, wantValues) {
+		t.Fatalf("ascendrange:\n got: %x\nwant: %x", got, want)
 	}
 }
+
+/*
 
 func TestDeleteMax(t *testing.T) {
 	tr := New(3)
@@ -809,3 +838,4 @@ func BenchmarkDeleteAndRestore(b *testing.B) {
 		}
 	})
 }
+*/

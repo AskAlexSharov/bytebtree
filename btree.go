@@ -67,7 +67,7 @@ type ItemOld interface {
 }
 type Item [2][]byte
 
-func (i *Item) Less(than *Item) bool { return bytes.Compare(i[0], than[0]) < 0 }
+func (it *Item) Less(than *Item) bool { return bytes.Compare(it[0], than[0]) < 0 }
 
 const (
 	DefaultFreeListSize = 32
@@ -707,8 +707,6 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 	out := t.root.insert(&Item{k, v}, t.maxItems())
 	if out == nil {
 		t.length++
-	}
-	if out == nil {
 		return nil, nil
 	}
 	return out[0], out[1]
