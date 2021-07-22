@@ -407,6 +407,13 @@ func BenchmarkInsert(b *testing.B) {
 }
 
 /*
+1662174701
+593553388 ns/op	        22176836 B/op	  147084 allocs/op
+1375559622 ns/op        66923608 B/op    1068701 allocs/op
+623221166 ns/op         18172360 B/op      34870 allocs/op
+1724309622 ns/op        66988192 B/op	 1068953 allocs/op
+685012382 ns/op	        21777432 B/op	 1002587 allocs/op
+600901826 ns/op     	22205800 B/op	 1025029 allocs/op
 
 func BenchmarkSeek(b *testing.B) {
 	b.StopTimer()
