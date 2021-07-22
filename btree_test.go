@@ -391,25 +391,22 @@ func TestDescendGreaterThan(t *testing.T) {
 		t.Fatalf("descendgreaterthan:\n got: %v\nwant: %v", got, want)
 	}
 }
-
+*/
 const benchmarkTreeSize = 10000
 
 func BenchmarkInsert(b *testing.B) {
 	b.StopTimer()
-	insertP := perm(benchmarkTreeSize)
+	keys, values := perm(benchmarkTreeSize)
 	b.StartTimer()
-	i := 0
-	for i < b.N {
-		tr := New(*btreeDegree)
-		for _, item := range insertP {
-			tr.ReplaceOrInsert(item)
-			i++
-			if i >= b.N {
-				return
-			}
+	tr := New()
+	for i := 0; i < b.N; i++ {
+		for j := range keys {
+			tr.ReplaceOrInsert(keys[j], values[j])
 		}
 	}
 }
+
+/*
 
 func BenchmarkSeek(b *testing.B) {
 	b.StopTimer()
