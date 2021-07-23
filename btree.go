@@ -86,8 +86,8 @@ var (
 // FreeList.
 // Two Btrees using the same freelist are safe for concurrent write access.
 type FreeList struct {
-	mu       sync.Mutex
 	freelist []*node
+	mu       sync.Mutex
 }
 
 // NewFreeList creates a new free list.
@@ -255,9 +255,9 @@ func (s *children) truncate(index int) {
 //   * len(children) == 0, len(items) unconstrained
 //   * len(children) == len(items) + 1
 type node struct {
+	cow      *copyOnWriteContext
 	items    items
 	children children
-	cow      *copyOnWriteContext
 }
 
 func (n *node) mutableFor(cow *copyOnWriteContext) *node {
@@ -547,7 +547,7 @@ func (n *node) iterate(dir direction, start, stop *Item, includeStart bool, hit 
 		if start != nil {
 			index, found = n.items.find(start)
 			if !found {
-				index = index - 1
+				index--
 			}
 		} else {
 			index = len(n.items) - 1
@@ -596,9 +596,9 @@ func (n *node) print(w io.Writer, level int) {
 // Write operations are not safe for concurrent mutation by multiple
 // goroutines, but Read operations are.
 type BTree struct {
-	length int
 	root   *node
 	cow    *copyOnWriteContext
+	length int
 }
 
 // copyOnWriteContext pointers determine node ownership... a tree with a write
@@ -668,12 +668,10 @@ func (c *copyOnWriteContext) freeNode(n *node) freeType {
 		n.cow = nil
 		if c.freelist.freeNode(n) {
 			return ftStored
-		} else {
-			return ftFreelistFull
 		}
-	} else {
-		return ftNotOwned
+		return ftFreelistFull
 	}
+	return ftNotOwned
 }
 
 // ReplaceOrInsert adds the given item to the tree.  If an item in the tree

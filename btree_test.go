@@ -81,7 +81,7 @@ func all(t *BTree) (keys, values [][]byte) {
 func rangrev(n int) (keys, values [][]byte) {
 	k, v := perm(n)
 	l := &List{k, v}
-	sort.Reverse(l)
+	sort.Sort(sort.Reverse(l))
 	return l.keys, l.values
 }
 
@@ -102,7 +102,7 @@ func order(keys, values [][]byte) ([][]byte, [][]byte) {
 }
 func revorder(keys, values [][]byte) ([][]byte, [][]byte) {
 	l := &List{keys, values}
-	sort.Reverse(l)
+	sort.Sort(sort.Reverse(l))
 	return l.keys, l.values
 }
 
