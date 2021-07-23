@@ -51,7 +51,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 	"sync"
 )
@@ -189,9 +188,19 @@ func (s *items) truncate(index int) {
 // list.  'found' is true if the item already exists in the list at the given
 // index.
 func (s items) find(item *Item) (index int, found bool) {
-	i := sort.Search(len(s), func(i int) bool {
-		return item.Less(s[i])
-	})
+	//inline sort.Search
+	//i := sort.Search(len(s), func(i int) bool { return item.Less(s[i]) })
+	i, j := 0, len(s)
+	for i < j {
+		h := int(uint(i+j) >> 1) // avoid overflow when computing h
+		// i ≤ h < j
+		if bytes.Compare(item[0], s[h][0]) >= 0 {
+			i = h + 1 // preserves f(i-1) == false
+		} else {
+			j = h // preserves f(j) == true
+		}
+	}
+
 	if i > 0 && !s[i-1].Less(item) {
 		return i - 1, true
 	}
@@ -682,15 +691,15 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 		t.root.items = append(t.root.items, &Item{k, v})
 		t.length++
 		return nil, nil
-	} else {
-		t.root = t.root.mutableFor(t.cow)
-		if len(t.root.items) >= MaxItems {
-			item2, second := t.root.split(MaxItems / 2)
-			oldroot := t.root
-			t.root = t.cow.newNode()
-			t.root.items = append(t.root.items, item2)
-			t.root.children = append(t.root.children, oldroot, second)
-		}
+	}
+
+	t.root = t.root.mutableFor(t.cow)
+	if len(t.root.items) >= MaxItems {
+		item2, second := t.root.split(MaxItems / 2)
+		oldroot := t.root
+		t.root = t.cow.newNode()
+		t.root.items = append(t.root.items, item2)
+		t.root.children = append(t.root.children, oldroot, second)
 	}
 	out := t.root.insert(&Item{k, v})
 	if out == nil {

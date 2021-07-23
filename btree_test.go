@@ -19,9 +19,12 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/hashicorp/go-immutable-radix"
 )
 
 func init() {
@@ -392,18 +395,43 @@ func TestDescendGreaterThan(t *testing.T) {
 	}
 }
 */
-const benchmarkTreeSize = 1_000_000
+const benchmarkTreeSize = 10_000_000
 
 func BenchmarkInsert(b *testing.B) {
 	b.StopTimer()
 	keys, values := perm(benchmarkTreeSize)
 	b.StartTimer()
 	tr := New()
-	for i := 0; i < b.N; i++ {
-		for j := range keys {
-			tr.ReplaceOrInsert(keys[j], values[j])
-		}
+	//for i := 0; i < b.N; i++ {
+	for j := range keys {
+		tr.ReplaceOrInsert(keys[j], values[j])
 	}
+	//}
+
+	//10685350
+	//132254098
+	//41939039544
+	//25972423251
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("btree mem: %d\n", m.Alloc/1024/1024/1024)
+}
+
+func BenchmarkInsertRadix(b *testing.B) {
+	b.StopTimer()
+	keys, values := perm(benchmarkTreeSize)
+	b.StartTimer()
+	tr := iradix.New()
+	tx := tr.Txn()
+	//for i := 0; i < b.N; i++ {
+	for j := range keys {
+		tx.Insert(keys[j], values[j])
+	}
+	tx.Commit()
+	//}
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("radix mem: %d\n", m.Alloc/1024/1024/1024)
 }
 
 /*
