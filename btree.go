@@ -674,6 +674,16 @@ func (c *copyOnWriteContext) freeNode(n *node) freeType {
 	return ftNotOwned
 }
 
+var itemPool = sync.Pool{
+	New: func() interface{} { return &Item{} },
+}
+
+func wrap(k, v []byte) *Item {
+	it := itemPool.Get().(*Item)
+	it[0], it[1] = k, v
+	return it
+}
+
 // ReplaceOrInsert adds the given item to the tree.  If an item in the tree
 // already equals the given one, it is removed from the tree and returned.
 // Otherwise, nil is returned.
@@ -684,9 +694,10 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 		panic("nil item being added to BTree")
 	}
 
+	in := wrap(k, v)
 	if t.root == nil {
 		t.root = t.cow.newNode()
-		t.root.items = append(t.root.items, &Item{k, v})
+		t.root.items = append(t.root.items, in)
 		t.length++
 		return nil, nil
 	}
@@ -699,10 +710,13 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 		t.root.items = append(t.root.items, item2)
 		t.root.children = append(t.root.children, oldroot, second)
 	}
-	out := t.root.insert(&Item{k, v})
+	out := t.root.insert(in)
 	if out == nil {
 		t.length++
 		return nil, nil
+	}
+	if in != out {
+		itemPool.Put(out)
 	}
 	return out[0], out[1]
 }
@@ -710,10 +724,11 @@ func (t *BTree) ReplaceOrInsert(k, v []byte) ([]byte, []byte) {
 // Delete removes an item equal to the passed in item from the tree, returning
 // it.  If no such item exists, returns nil.
 func (t *BTree) Delete(k []byte) ([]byte, []byte) {
-	out := t.deleteItem(&Item{k, nil}, removeItem)
+	out := t.deleteItem(wrap(k, nil), removeItem)
 	if out == nil {
 		return nil, nil
 	}
+	itemPool.Put(out)
 	return out[0], out[1]
 }
 
@@ -724,6 +739,7 @@ func (t *BTree) DeleteMin() ([]byte, []byte) {
 	if it == nil {
 		return nil, nil
 	}
+	itemPool.Put(it)
 	return it[0], it[1]
 }
 
@@ -734,6 +750,7 @@ func (t *BTree) DeleteMax() ([]byte, []byte) {
 	if it == nil {
 		return nil, nil
 	}
+	itemPool.Put(it)
 	return it[0], it[1]
 }
 
@@ -760,7 +777,7 @@ func (t *BTree) AscendRange(greaterOrEqual, lessThan []byte, iterator ItemIterat
 	if t.root == nil {
 		return
 	}
-	t.root.iterate(ascend, &Item{greaterOrEqual, nil}, &Item{lessThan, nil}, true, false, iterator)
+	t.root.iterate(ascend, wrap(greaterOrEqual, nil), wrap(lessThan, nil), true, false, iterator)
 }
 
 // AscendLessThan calls the iterator for every value in the tree within the range
@@ -769,7 +786,7 @@ func (t *BTree) AscendLessThan(pivot []byte, iterator ItemIterator) {
 	if t.root == nil {
 		return
 	}
-	t.root.iterate(ascend, nil, &Item{pivot, nil}, false, false, iterator)
+	t.root.iterate(ascend, nil, wrap(pivot, nil), false, false, iterator)
 }
 
 // AscendGreaterOrEqual calls the iterator for every value in the tree within
@@ -778,7 +795,7 @@ func (t *BTree) AscendGreaterOrEqual(pivot []byte, iterator ItemIterator) {
 	if t.root == nil {
 		return
 	}
-	t.root.iterate(ascend, &Item{pivot, nil}, nil, true, false, iterator)
+	t.root.iterate(ascend, wrap(pivot, nil), nil, true, false, iterator)
 }
 
 // Ascend calls the iterator for every value in the tree within the range
@@ -796,7 +813,7 @@ func (t *BTree) DescendRange(lessOrEqual, greaterThan []byte, iterator ItemItera
 	if t.root == nil {
 		return
 	}
-	t.root.iterate(descend, &Item{lessOrEqual, nil}, &Item{greaterThan, nil}, true, false, iterator)
+	t.root.iterate(descend, wrap(lessOrEqual, nil), wrap(greaterThan, nil), true, false, iterator)
 }
 
 // DescendLessOrEqual calls the iterator for every value in the tree within the range
@@ -805,7 +822,7 @@ func (t *BTree) DescendLessOrEqual(pivot []byte, iterator ItemIterator) {
 	if t.root == nil {
 		return
 	}
-	t.root.iterate(descend, &Item{pivot, nil}, nil, true, false, iterator)
+	t.root.iterate(descend, wrap(pivot, nil), nil, true, false, iterator)
 }
 
 // DescendGreaterThan calls the iterator for every value in the tree within
@@ -814,7 +831,7 @@ func (t *BTree) DescendGreaterThan(pivot []byte, iterator ItemIterator) {
 	if t.root == nil {
 		return
 	}
-	t.root.iterate(descend, nil, &Item{pivot, nil}, false, false, iterator)
+	t.root.iterate(descend, nil, wrap(pivot, nil), false, false, iterator)
 }
 
 // Descend calls the iterator for every value in the tree within the range
@@ -832,7 +849,9 @@ func (t *BTree) Get(key []byte) ([]byte, bool) {
 	if t.root == nil {
 		return nil, false
 	}
-	it := t.root.get(&Item{key, nil})
+	seek := wrap(key, nil)
+	it := t.root.get(seek)
+	itemPool.Put(seek)
 	if it == nil {
 		return nil, false
 	}
