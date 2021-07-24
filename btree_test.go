@@ -23,8 +23,6 @@ import (
 	"sort"
 	"testing"
 	"time"
-
-	"github.com/hashicorp/go-immutable-radix"
 )
 
 func init() {
@@ -402,11 +400,11 @@ func BenchmarkInsert(b *testing.B) {
 	keys, values := perm(benchmarkTreeSize)
 	b.StartTimer()
 	tr := New()
-	//for i := 0; i < b.N; i++ {
-	for j := range keys {
-		tr.ReplaceOrInsert(keys[j], values[j])
+	for i := 0; i < b.N; i++ {
+		for j := range keys {
+			tr.ReplaceOrInsert(keys[j], values[j])
+		}
 	}
-	//}
 
 	//10685350
 	//132254098
@@ -417,22 +415,22 @@ func BenchmarkInsert(b *testing.B) {
 	fmt.Printf("btree mem: %d\n", m.Alloc/1024/1024/1024)
 }
 
-func BenchmarkInsertRadix(b *testing.B) {
-	b.StopTimer()
-	keys, values := perm(benchmarkTreeSize)
-	b.StartTimer()
-	tr := iradix.New()
-	tx := tr.Txn()
-	//for i := 0; i < b.N; i++ {
-	for j := range keys {
-		tx.Insert(keys[j], values[j])
-	}
-	tx.Commit()
-	//}
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Printf("radix mem: %d\n", m.Alloc/1024/1024/1024)
-}
+//func BenchmarkInsertRadix(b *testing.B) {
+//	b.StopTimer()
+//	keys, values := perm(benchmarkTreeSize)
+//	b.StartTimer()
+//	tr := iradix.New()
+//	tx := tr.Txn()
+//	//for i := 0; i < b.N; i++ {
+//	for j := range keys {
+//		tx.Insert(keys[j], values[j])
+//	}
+//	tx.Commit()
+//	//}
+//	var m runtime.MemStats
+//	runtime.ReadMemStats(&m)
+//	fmt.Printf("radix mem: %d\n", m.Alloc/1024/1024/1024)
+//}
 
 /*
 1662174701
@@ -442,6 +440,8 @@ func BenchmarkInsertRadix(b *testing.B) {
 1724309622 ns/op        66988192 B/op	 1068953 allocs/op
 685012382 ns/op	        21777432 B/op	 1002587 allocs/op
 600901826 ns/op     	22205800 B/op	 1025029 allocs/op
+
+
 
 func BenchmarkSeek(b *testing.B) {
 	b.StopTimer()

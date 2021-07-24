@@ -55,7 +55,7 @@ import (
 	"sync"
 )
 
-const Degree = 32
+const Degree = 128
 const MaxItems = Degree*2 - 1
 const MinItems = Degree - 1
 
