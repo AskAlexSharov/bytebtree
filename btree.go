@@ -350,7 +350,8 @@ func (n *node) get(key *Item) *Item {
 	i, found := n.items.find(key)
 	if found {
 		return n.items[i]
-	} else if len(n.children) > 0 {
+	}
+	if len(n.children) > 0 {
 		return n.children[i].get(key)
 	}
 	return nil
